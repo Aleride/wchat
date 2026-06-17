@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat - Connecting People, Anywhere</title>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f0f4fa;--hi:#ffffff;--lo:#e8f0fa;--dk:#d1e3fa;
+  --light:#e8f0fa;--shadow:#c5d9f9;
+  --title:#ffffff;--title2:#f0f4fa;
+  --sel:#e8f0fa;--seltext:#000000;
+  --metal:#8b9dc3;--panel:#ffffff;
+  --accent:#0078d4;
+  --accent-light:#e6f1fa;
+  --accent-dark:#005a9e;
+  --success:#107c10;
+  --warning:#d83b01;
+  --danger:#d32f2f;
+  --info:#0066b3;
+  --text-primary:#000000;
+  --text-secondary:#666666;
+  --border:#cfd2d4;
+}
+html,body{height:100%;overflow:hidden}
+body{font-family:"Segoe UI Variable", "Segoe UI", "Microsoft YaHei", sans-serif;font-size:14px;color:var(--text-primary);background:var(--bg)}
+
+/* Windows 11 圆角和阴影 */
+.raised{box-shadow:0 4px 12px rgba(0,0,0,0.1),0 0 0 1px rgba(0,0,0,0.05);border-radius:12px}
+.sunken{box-shadow:inset 0 2px 4px rgba(0,0,0,0.05),inset 0 0 0 1px rgba(0,0,0,0.02);border-radius:12px}
+
+/* 标题栏 - Windows 11 风格 */
+.titlebar{
+  background:linear-gradient(90deg,var(--title),var(--title2));
+  color:var(--text-primary);font-weight:500;font-size:16px;
+  padding:12px 16px;display:flex;align-items:center;gap:16px;
+  user-select:none;flex-shrink:0;border-bottom:1px solid rgba(0,0,0,0.08);border-radius:12px 12px 0 0;
+  backdrop-filter:blur(10px);background-color:rgba(255,255,255,0.7)
+}
+.titlebar-text{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.titlebar-clock{font-family:"Segoe UI Variable", "Segoe UI", sans-serif;font-size:14px;color:var(--text-secondary);opacity:.8;margin-left:16px;letter-spacing:.5px}
+
+/* Windows 11 输入框 */
+.mil-input{
+  background:#ffffff;border:1px solid var(--border);outline:none;font-family:inherit;font-size:14px;padding:8px 12px;
+  box-shadow:0 1px 2px rgba(0,0,0,0.05),0 0 0 1px rgba(0,0,0,0.02);border-radius:8px;
+  color:var(--text-primary);transition:all 0.2s ease
+}
+.mil-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(0,120,212,0.2)}
+
+/* Windows 11 按钮 */
+.mil-btn{
+  background:#ffffff;font-family:inherit;font-size:14px;padding:8px 16px;min-width:80px;
+  box-shadow:0 1px 2px rgba(0,0,0,0.05),0 0 0 1px rgba(0,0,0,0.02);border:1px solid var(--border);
+  cursor:pointer;border-radius:8px;transition:all 0.2s ease
+}
+.mil-btn:hover{background:#f8f9fa;box-shadow:0 2px 4px rgba(0,0,0,0.1)}
+.mil-btn:active{background:#e8f0fa;box-shadow:inset 0 1px 2px rgba(0,0,0,0.1)}
+.mil-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mil-btn:disabled{color:var(--text-secondary);cursor:default;background:#f0f4fa}
+.mil-btn.primary{background:var(--accent);color:#ffffff;border-color:var(--accent);font-weight:500}
+.mil-btn.primary:hover{background:var(--accent-dark)}
+.mil-btn.primary:active{background:var(--accent-dark)}
+
+/* 主窗口 - Windows 11 风格 */
+.main-win{
+  position:absolute;inset:16px;background:var(--panel);display:flex;flex-direction:column;
+  box-shadow:0 4px 12px rgba(0,0,0,0.1),0 0 0 1px rgba(0,0,0,0.05);border-radius:12px;
+  backdrop-filter:blur(10px);background-color:rgba(255,255,255,0.9)
+}
+
+/* 菜单栏 - Windows 11 Fluent Design */
+.menubar{background:var(--panel);padding:8px 0;display:flex;flex-shrink:0;position:relative;z-index:10;border-bottom:1px solid rgba(0,0,0,0.08);border-radius:12px 12px 0 0}
+.menubar-item{padding:8px 16px;cursor:pointer;user-select:none;position:relative;color:var(--text-primary);font-family:inherit;transition:all 0.2s ease}
+.menubar-item:hover,.menubar-item.open{background:var(--sel);color:var(--seltext);border-radius:8px}
+.dropdown{display:none;position:absolute;top:100%;left:0;background:var(--panel);min-width:200px;z-index:100;
+  box-shadow:0 4px 12px rgba(0,0,0,0.1),0 0 0 1px rgba(0,0,0,0.05);padding:8px 0;border:1px solid rgba(0,0,0,0.08);border-radius:8px}
+.menubar-item.open .dropdown{display:block}
+.dd-item{padding:8px 24px 8px 32px;cursor:pointer;white-space:nowrap;position:relative;user-select:none;color:var(--text-primary);font-family:inherit;transition:all 0.2s ease}
+.dd-item:hover{background:var(--sel);color:var(--seltext);border-radius:8px}
+.dd-item.disabled{color:var(--text-secondary);cursor:default}
+.dd-item.disabled:hover{background:transparent;color:var(--text-secondary)}
+.dd-sep{height:0;margin:8px 8px;border-top:1px solid #e0e0e0;border-bottom:1px solid #ffffff}
+.dd-item .shortcut{position:absolute;right:16px;font-size:12px;color:var(--text-secondary)}
+.dd-item .checkmark{position:absolute;left:16px}
+
+/* 通讯栏 - Windows 11 Fluent Design */
+.comm-bar{
+  background:var(--panel);padding:12px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;border-bottom:1px solid rgba(0,0,0,0.08);
+  backdrop-filter:blur(10px);background-color:rgba(255,255,255,0.7)
+}
+.comm-bar label{white-space:nowrap;font-size:14px;color:var(--text-primary);font-family:inherit}
+.comm-bar .mil-input{height:36px;flex:none;background:#ffffff;border:1px solid var(--border);transition:all 0.2s ease}
+.comm-bar .nick-input{width:120px}
+.comm-bar .room-input{width:100px}
+.comm-bar .sep{width:1px;height:24px;background:#e0e0e0;margin:0 6px}
+
+/* 通讯区 - Windows 11 Fluent Design */
+.comm-pane{display:flex;flex:1;overflow:hidden;margin:16px}
+.comm-screen{
+  flex:1;background:#ffffff;overflow-y:auto;padding:16px;font-size:14px;
+  box-shadow:0 1px 2px rgba(0,0,0,0.05),0 0 0 1px rgba(0,0,0,0.02);border-radius:8px;
+  word-break:break-all;line-height:1.6;color:#006633;font-family:"Consolas","Courier New",monospace;
+}
+.comm-screen::-webkit-scrollbar{width:12px}
+.comm-screen::-webkit-scrollbar-track{background:#f0f4fa;border:1px solid #e8f0fa;border-radius:6px}
+.comm-screen::-webkit-scrollbar-thumb{background:#c5d9f9;border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,0.05)}
+.comm-screen::-webkit-scrollbar-thumb:hover{background:#a3b1bf}
+
+/* 用户列表 - Windows 11 Fluent Design */
+.user-list{
+  width:160px;background:#ffffff;overflow-y:auto;margin-left:16px;
+  box-shadow:0 1px 2px rgba(0,0,0,0.05),0 0 0 1px rgba(0,0,0,0.02);border-radius:8px;
+  flex-shrink:0;border-left:1px solid #e8f0fa
+}
+.user-header{background:var(--panel);padding:8px 16px;font-weight:500;border-bottom:1px solid #e8f0fa;position:sticky;top:0;color:var(--text-primary);font-size:14px;font-family:inherit}
+.user-item{padding:8px 16px;display:flex;align-items:center;gap:12px;font-size:14px;color:var(--text-primary);font-family:inherit;transition:all 0.2s ease}
+.user-item:hover{background:var(--sel);border-radius:8px}
+.user-item .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+
+/* 消息样式 - Windows 11 Fluent Design */
+.msg-line{padding:8px 0;cursor:default}
+.msg-line:hover{background:#f8f9fa;border-radius:8px}
+.msg-ts{color:#006633;font-family:inherit;font-size:12px}
+.msg-nick{font-weight:500;cursor:default;color:var(--accent);font-family:inherit}
+.msg-sys{color:#006633;font-style:italic;font-family:inherit}
+.msg-recalled{color:#999999;font-style:italic;font-family:inherit}
+.msg-join{color:var(--success);font-family:inherit}
+.msg-leave{color:var(--danger);font-family:inherit}
+
+/* 状态栏 - Windows 11 Fluent Design */
+.statusbar{display:flex;padding:12px;gap:12px;flex-shrink:0;background:var(--panel);border-top:1px solid rgba(0,0,0,0.08);border-radius:0 0 12px 12px}
+.statusbar-section{padding:8px 16px;flex-shrink:0;
+  box-shadow:0 1px 2px rgba(0,0,0,0.05),0 0 0 1px rgba(0,0,0,0.02);border-radius:8px}
+.statusbar-section.grow{flex:1}
+
+/* 对话框 - Windows 11 Fluent Design */
+.dialog-overlay{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.5)}
+.dialog-overlay.show{display:flex}
+.dialog-win{
+  background:var(--panel);min-width:360px;
+  box-shadow:0 4px 12px rgba(0,0,0,0.1),0 0 0 1px rgba(0,0,0,0.05);border-radius:12px;
+  backdrop-filter:blur(10px);background-color:rgba(255,255,255,0.9)
+}
+.dialog-title{
+  background:linear-gradient(90deg,var(--title),var(--title2));color:var(--text-primary);font-weight:500;
+  padding:12px 16px;display:flex;align-items:center;border-bottom:1px solid rgba(0,0,0,0.08);border-radius:12px 12px 0 0
+}
+.dialog-title-text{flex:1}
+.dialog-body{padding:24px 32px}
+.dialog-row{display:flex;align-items:center;gap:16px;margin-bottom:16px}
+.dialog-row label{width:80px;text-align:right;flex-shrink:0;font-size:14px;color:var(--text-primary);font-family:inherit}
+.dialog-row .mil-input{flex:1;height:36px}
+.dialog-btns{display:flex;justify-content:center;gap:16px;margin-top:24px}
+
+/* 右键菜单 - Windows 11 Fluent Design */
+.ctx-menu{
+  position:fixed;background:var(--panel);z-index:999;padding:8px 0;min-width:160px;
+  box-shadow:0 4px 12px rgba(0,0,0,0.1),0 0 0 1px rgba(0,0,0,0.05);border-radius:8px;
+  backdrop-filter:blur(10px);background-color:rgba(255,255,255,0.9)
+}
+.ctx-item{padding:8px 24px;cursor:pointer;white-space:nowrap;font-family:inherit;transition:all 0.2s ease}
+.ctx-item:hover{background:var(--sel);color:var(--seltext);border-radius:8px}
+.ctx-item.disabled{color:var(--text-secondary)}
+.ctx-item.disabled:hover{background:transparent;color:var(--text-secondary)}
+.ctx-sep{height:0;margin:8px 8px;border-top:1px solid #e0e0e0;border-bottom:1px solid #ffffff}
+
+/* 重连提示 - Windows 11 Fluent Design */
+.reconnect-banner{background:var(--danger);color:#ffffff;padding:8px 16px;font-size:14px;text-align:center;flex-shrink:0;cursor:pointer;display:none;font-weight:500;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}
+
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+
+<div class="main-win">
+  <!-- 标题栏 -->
+  <div class="titlebar">
+    <span class="titlebar-text" id="winTitle">Chat - Connecting People, Anywhere</span>
+    <span class="titlebar-clock" id="titleClock">00:00</span>
+  </div>
+
+  <!-- 菜单栏 -->
+  <div class="menubar" id="menubar">
+    <div class="menubar-item" data-menu="room">房间(<u>R</u>)
+      <div class="dropdown">
+        <div class="dd-item" onclick="showChangeRoom()">更改房间...(<u>C</u>)<span class="shortcut">Ctrl+R</span></div>
+        <div class="dd-sep"></div>
+        <div class="dd-item" onclick="toggleUserList()">用户列表(<u>L</u>)</div>
+      </div>
+    </div>
+    <div class="menubar-item" data-menu="msg">消息(<u>M</u>)
+      <div class="dropdown">
+        <div class="dd-item" onclick="clearComm()">清空通讯记录(<u>C</u>)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 通讯栏 -->
+  <div class="comm-bar">
+    <label>昵称:</label>
+    <input class="mil-input nick-input" id="nickInput" type="text" maxlength="16" spellcheck="false">
+    <div class="sep"></div>
+    <label>房间:</label>
+    <input class="mil-input room-input" id="roomInput" type="text" maxlength="32" spellcheck="false">
+    <button class="mil-btn primary" id="connectBtn" onclick="doConnect()" style="min-width:80px">连接</button>
+    <button class="mil-btn primary" id="disconnectBtn" onclick="doDisconnect()" style="min-width:80px;display:none">断开</button>
+  </div>
+
+  <div class="reconnect-banner" id="reconnectBar" onclick="tryReconnect()">
+    通讯中断，点击重连
+  </div>
+
+  <!-- 通讯区 -->
+  <div class="comm-pane">
+    <div class="comm-screen" id="msgArea"></div>
+    <div class="user-list" id="userList">
+      <div class="user-header">在线用户 (<span id="userCount">0</span>)</div>
+      <div id="userListBody"></div>
+    </div>
+  </div>
+
+  <!-- 输入栏 -->
+  <div class="input-bar">
+    <input class="mil-input" id="chatInput" type="text" placeholder="输入消息..." maxlength="500"
+           onkeydown="if(event.key==='Enter'){event.preventDefault();sendMsg()}" oninput="onChatInput()">
+    <button class="mil-btn primary" id="sendBtn" onclick="sendMsg()" style="min-width:80px">发送</button>
+  </div>
+
+  <!-- 状态栏 -->
+  <div class="statusbar">
+    <div class="statusbar-section grow" id="sbStatus"><span style="color:var(--success)">●</span> 未连接</div>
+    <div class="statusbar-section" id="sbFreq">#房间</div>
+    <div class="statusbar-section" id="sbUsers">0 用户在线</div>
+  </div>
+</div>
+
+<!-- 更改房间对话框 -->
+<div class="dialog-overlay" id="changeRoomOverlay">
+  <div class="dialog-win">
+    <div class="dialog-title"><span class="dialog-title-text">更改房间</span></div>
+    <div class="dialog-body">
+      <div class="dialog-row">
+        <label>房间名:</label>
+        <input class="mil-input" id="newRoomInput" type="text" maxlength="32" spellcheck="false">
+      </div>
+      <div class="dialog-btns">
+        <button class="mil-btn primary" onclick="doChangeRoom()">确定</button>
+        <button class="mil-btn" onclick="hideChangeRoom()">取消</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 右键菜单 -->
+<div id="ctxMenu" class="ctx-menu" style="display:none"></div>
+
+<script>
+// 全局状态
+const state = {
+  peer: null,
+  conns: [],
+  hostConn: null,
+  isHost: false,
+  room: '',
+  nick: '',
+  myHue: 0,
+  myId: '',
+  online: new Map(),
+  peerReady: false
+};
+
+// PeerJS 配置
+const PFX = 'chat-v1-';
+const ICE = [
+  {urls: 'stun:stun.miwifi.com:3478'},
+  {urls: 'stun:stun.l.google.com:19302'},
+  {urls: 'stun:stun1.l.google.com:19302'},
+  {urls: 'stun:stun.ekiga.net'},
+  {urls: 'stun:stunserver.org:3478'}
+];
+
+// DOM 元素选择器
+function $(id) {
+  return document.getElementById(id);
+}
+
+// 初始化
+(function() {
+  // 加载保存的数据
+  const savedNick = localStorage.getItem('chat-nick');
+  const savedRoom = localStorage.getItem('chat-room');
+  
+  if (savedNick) $('nickInput').value = savedNick;
+  if (savedRoom) $('roomInput').value = savedRoom;
+  
+  // 设置菜单
+  setupMenus();
+  
+  // 更新时钟
+  updateClock();
+  setInterval(updateClock, 1000);
+  
+  // 事件监听
+  document.addEventListener('click', () => {
+    const ctxMenu = $('ctxMenu');
+    if (ctxMenu) ctxMenu.style.display = 'none';
+    closeAllMenus();
+  });
+  
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'r') {
+      e.preventDefault();
+      showChangeRoom();
+    }
+  });
+})();
+
+// 更新时钟
+function updateClock() {
+  const now = new Date();
+  const hours = now.getHours().toString().padStart(2, '0');
+  const minutes = now.getMinutes().toString().padStart(2, '0');
+  $('titleClock').textContent = `${hours}:${minutes}`;
+}
+
+// 设置菜单
+function setupMenus() {
+  const menuItems = document.querySelectorAll('.menubar-item');
+  menuItems.forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const wasOpen = item.classList.contains('open');
+      closeAllMenus();
+      if (!wasOpen) item.classList.add('open');
+    });
+    
+    item.addEventListener('mouseenter', () => {
+      if (document.querySelector('.menubar-item.open')) {
+        closeAllMenus();
+        item.classList.add('open');
+      }
+    });
+  });
+}
+
+function closeAllMenus() {
+  document.querySelectorAll('.menubar-item.open').forEach(item => {
+    item.classList.remove('open');
+  });
+}
+
+// 连接功能
+function doConnect() {
+  const nick = $('nickInput').value.trim();
+  const room = $('roomInput').value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  
+  if (!nick) {
+    toast('请输入昵称');
+    return;
+  }
+  
+  if (!room) {
+    toast('请输入房间名');
+    return;
+  }
+  
+  // 保存数据
+  state.nick = nick;
+  state.room = room;
+  state.myHue = Math.floor(Math.random() * 360);
+  
+  localStorage.setItem('chat-nick', nick);
+  localStorage.setItem('chat-room', room);
+  
+  // 禁用连接按钮
+  const connectBtn = $('connectBtn');
+  connectBtn.disabled = true;
+  connectBtn.textContent = '连接中...';
+  
+  // 尝试作为主机连接
+  tryAsHost(PFX + room);
+}
+
+function tryAsHost(roomId) {
+  const peer = new Peer(roomId, { config: { iceServers: ICE } });
+  state.peer = peer;
+  state.isHost = true;
+  
+  peer.on('open', (id) => {
+    state.peerReady = true;
+    state.myId = id;
+    state.online.set(id, { nick: state.nick, hue: state.myHue });
+    onConnected();
+    sysMsg(`你创建了房间 #${state.room}`, 'join');
+  });
+  
+  peer.on('connection', (conn) => {
+    setupHostConn(conn);
+  });
+  
+  peer.on('error', (err) => {
+    if (err.type === 'unavailable-id') {
+      peer.destroy();
+      tryAsClient();
+    } else {
+      toast(`连接失败: ${err.type}`);
+      resetConnectBtn();
+    }
+  });
+}
+
+function tryAsClient() {
+  const peer = new Peer(undefined, { config: { iceServers: ICE } });
+  state.peer = peer;
+  state.isHost = false;
+  
+  peer.on('open', (id) => {
+    state.peerReady = true;
+    state.myId = id;
+    
+    const conn = peer.connect(PFX + state.room, { 
+      reliable: true, 
+      metadata: { nick: state.nick, hue: state.myHue }
+    });
+    
+    setupClientConn(conn);
+    updateStatus('connecting', '正在加入...');
+  });
+  
+  peer.on('error', (err) => {
+    if (err.type === 'peer-unavailable') {
+      updateStatus('offline', '房间不存在');
+      $('reconnectBar').style.display = 'block';
+    } else {
+      toast(`连接失败: ${err.type}`);
+    }
+    resetConnectBtn();
+  });
+}
+
+function resetConnectBtn() {
+  const connectBtn = $('connectBtn');
+  connectBtn.disabled = false;
+  connectBtn.textContent = '连接';
+}
+
+// 连接成功
+function onConnected() {
+  $('winTitle').textContent = `Chat - Connecting People, Anywhere`;
+  $('sbFreq').textContent = `#${state.room}`;
+  $('msgArea').innerHTML = '';
+  $('reconnectBar').style.display = 'none';
+  $('connectBtn').style.display = 'none';
+  $('disconnectBtn').style.display = '';
+  $('nickInput').disabled = true;
+  $('roomInput').disabled = true;
+  $('chatInput').focus();
+  
+  updateStatus('online', '已连接');
+  refreshUsers();
+  resetConnectBtn();
+}
+
+// 断开连接
+function doDisconnect() {
+  disconnect();
+  sysMsg('已断开连接', 'leave');
+}
+
+function disconnect() {
+  if (state.isHost) {
+    state.conns.forEach(conn => {
+      try { conn.close(); } catch (e) {}
+    });
+  } else if (state.hostConn) {
+    try { state.hostConn.close(); } catch (e) {}
+  }
+  
+  if (state.peer) {
+    try { state.peer.destroy(); } catch (e) {}
+  }
+  
+  state.peer = null;
+  state.conns = [];
+  state.hostConn = null;
+  state.isHost = false;
+  state.peerReady = false;
+  state.online.clear();
+  
+  updateStatus('offline', '未连接');
+  $('connectBtn').style.display = '';
+  $('disconnectBtn').style.display = 'none';
+  $('nickInput').disabled = false;
+  $('roomInput').disabled = false;
+  $('reconnectBar').style.display = 'none';
+  refreshUsers();
+}
+
+// 主机连接处理
+function setupHostConn(conn) {
+  state.conns.push(conn);
+  
+  conn.on('open', () => {
+    const users = {};
+    state.online.forEach((v, k) => { users[k] = v; });
+    conn.send({ type: 'welcome', yourId: conn.peer, users });
+  });
+  
+  conn.on('data', (data) => {
+    if (data.type === 'identify') {
+      state.online.set(conn.peer, { nick: data.nick, hue: data.hue });
+      relay(conn, { type: 'join', id: conn.peer, nick: data.nick, hue: data.hue });
+      sysMsg(`${data.nick} 加入了房间`, 'join');
+      refreshUsers();
+    } else {
+      relay(conn, data);
+      handleData(data, conn.peer);
+    }
+  });
+  
+  conn.on('close', () => {
+    state.conns = state.conns.filter(c => c !== conn);
+    const info = state.online.get(conn.peer);
+    
+    if (info) {
+      state.online.delete(conn.peer);
+      relay(null, { type: 'leave', id: conn.peer, nick: info.nick });
+      sysMsg(`${info.nick} 离开了房间`, 'leave');
+      refreshUsers();
+    }
+  });
+}
+
+// 客户端连接处理
+function setupClientConn(conn) {
+  state.hostConn = conn;
+  
+  conn.on('open', () => {
+    conn.send({ type: 'identify', nick: state.nick, hue: state.myHue });
+  });
+  
+  conn.on('data', (data) => {
+    handleData(data);
+  });
+  
+  conn.on('close', () => {
+    updateStatus('offline', '通讯已中断');
+    $('reconnectBar').style.display = 'block';
+  });
+}
+
+// 数据处理
+function handleData(data, fromPeer) {
+  switch (data.type) {
+    case 'welcome':
+      if (data.users) {
+        Object.entries(data.users).forEach(([k, v]) => state.online.set(k, v));
+      }
+      
+      state.online.set(state.myId, { nick: state.nick, hue: state.myHue });
+      updateStatus('online', '已连接');
+      refreshUsers();
+      sysMsg(`你加入了房间 #${state.room}`, 'join');
+      break;
+      
+    case 'join':
+      state.online.set(data.id, { nick: data.nick, hue: data.hue });
+      refreshUsers();
+      break;
+      
+    case 'leave':
+      state.online.delete(data.id);
+      refreshUsers();
+      break;
+      
+    case 'message':
+      const info = state.online.get(data.from) || { nick: '未知', hue: 0 };
+      addMsg(data.from, info.nick, info.hue, data.text, data.ts, data.id);
+      break;
+      
+    case 'recall':
+      recallMsgUI(data.msgId);
+      break;
+      
+    case 'typing':
+      const typingInfo = state.online.get(data.from);
+      if (typingInfo) showTypingStatus(typingInfo.nick);
+      break;
+  }
+}
+
+// 发送消息
+function sendMsg() {
+  const text = $('chatInput').value.trim();
+  
+  if (!text) return;
+  
+  if (!state.isHost && (!state.hostConn || !state.hostConn.open)) {
+    toast('未连接');
+    return;
+  }
+  
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const ts = Date.now();
+  const data = { type: 'message', from: state.myId, text, ts, id };
+  
+  addMsg(state.myId, state.nick, state.myHue, text, ts, id, true);
+  
+  if (state.isHost) {
+    relay(null, data);
+  } else if (state.hostConn?.open) {
+    state.hostConn.send(data);
+  }
+  
+  $('chatInput').value = '';
+  $('chatInput').focus();
+}
+
+// 撤回消息
+function recallMsg(msgId) {
+  const data = { type: 'recall', msgId, from: state.myId };
+  
+  if (state.isHost) {
+    relay(null, data);
+  } else if (state.hostConn?.open) {
+    state.hostConn.send(data);
+  }
+  
+  recallMsgUI(msgId);
+}
+
+function recallMsgUI(msgId) {
+  const el = document.querySelector(`[data-mid="${msgId}"]`);
+  if (!el || el.dataset.recalled) return;
+  
+  el.innerHTML = '<span class="msg-recalled">-- 消息已撤回 --</span>';
+  el.dataset.recalled = '1';
+}
+
+// 添加消息
+function addMsg(fromId, nick, hue, text, ts, id, isSelf) {
+  const area = $('msgArea');
+  const div = document.createElement('div');
+  div.className = 'msg-line';
+  div.dataset.mid = id || '';
+  div.dataset.from = fromId || '';
+  
+  const time = timeStr(ts);
+  const color = `hsl(${hue}, 55%, 35%)`;
+  div.innerHTML = `<span class="msg-ts">[${time}]</span> &lt;<span class="msg-nick" style="color:${color}">${escapeHtml(nick)}</span>&gt; ${escapeHtml(text)}`;
+  
+  div.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const items = [{ label: '复制', action: () => { navigator.clipboard.writeText(text).catch(() => {}); } }];
+    
+    if (fromId === state.myId && !div.dataset.recalled) {
+      items.push({ label: '撤回', action: () => { recallMsg(id); } });
+    }
+    
+    showCtx(e.clientX, e.clientY, items);
+  });
+  
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+// 系统消息
+function sysMsg(text, type) {
+  const area = $('msgArea');
+  const div = document.createElement('div');
+  div.className = 'msg-line ' + (type === 'join' ? 'msg-join' : type === 'leave' ? 'msg-leave' : 'msg-sys');
+  const prefix = type === 'join' ? '>>> ' : type === 'leave' ? '<<< ' : '*** ';
+  div.textContent = prefix + text;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+// 显示输入状态
+function showTypingStatus(nick) {
+  $('sbStatus').innerHTML = `<span style="color:var(--success)">●</span> ${nick} 正在输入...`;
+  clearTimeout(state.typingTimeout);
+  state.typingTimeout = setTimeout(() => { updateStatus('online', '已连接'); }, 2500);
+}
+
+// 输入监听
+function onChatInput() {
+  if ($('chatInput').value.trim()) {
+    const data = { type: 'typing', from: state.myId };
+    
+    if (state.isHost) {
+      relay(null, data);
+    } else if (state.hostConn?.open) {
+      state.hostConn.send(data);
+    }
+  }
+}
+
+// 更新状态
+function updateStatus(state, text) {
+  const dot = state === 'online' ? '<span style="color:var(--success)">●</span>' :
+             state === 'connecting' ? '<span style="color:var(--warning)">●</span>' :
+             '<span style="color:var(--danger)">●</span>';
+  
+  $('sbStatus').innerHTML = dot + ' ' + text;
+  refreshUsers();
+}
+
+// 刷新用户列表
+function refreshUsers() {
+  const count = state.online.size;
+  $('userCount').textContent = count;
+  $('sbUsers').textContent = `${count} 用户在线`;
+  
+  const body = $('userListBody');
+  body.innerHTML = '';
+  
+  state.online.forEach((info, id) => {
+    const div = document.createElement('div');
+    div.className = 'user-item';
+    const isSelf = id === state.myId;
+    
+    div.innerHTML = `<span class="dot" style="background:hsl(${info.hue}, 60%, 50%)"></span>
+      <span style="color:hsl(${info.hue}, 50%, 30%)">${escapeHtml(info.nick)}${isSelf ? ' (你)' : ''}</span>`;
+    
+    body.appendChild(div);
+  });
+}
+
+// 更改房间
+function showChangeRoom() {
+  closeAllMenus();
+  $('newRoomInput').value = state.room;
+  $('changeRoomOverlay').classList.add('show');
+  $('newRoomInput').focus();
+}
+
+function hideChangeRoom() {
+  $('changeRoomOverlay').classList.remove('show');
+}
+
+function doChangeRoom() {
+  const newRoom = $('newRoomInput').value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  
+  if (!newRoom) {
+    toast('请输入房间名');
+    return;
+  }
+  
+  if (newRoom === state.room) {
+    hideChangeRoom();
+    return;
+  }
+  
+  disconnect();
+  state.room = newRoom;
+  $('roomInput').value = newRoom;
+  
+  localStorage.setItem('chat-room', newRoom);
+  hideChangeRoom();
+  doConnect();
+}
+
+// 清空消息
+function clearComm() {
+  closeAllMenus();
+  $('msgArea').innerHTML = '';
+}
+
+// 切换用户列表
+function toggleUserList() {
+  closeAllMenus();
+  const userList = $('userList');
+  userList.style.display = userList.style.display === 'none' ? '' : 'none';
+}
+
+// 重连
+function tryReconnect() {
+  $('reconnectBar').style.display = 'none';
+  
+  if (state.peer) {
+    try { state.peer.destroy(); } catch (e) {}
+  }
+  
+  state.peer = null;
+  state.conns = [];
+  state.hostConn = null;
+  state.peerReady = false;
+  state.online.clear();
+  
+  updateStatus('connecting', '正在重连...');
+  tryAsHost(PFX + state.room);
+}
+
+// 显示上下文菜单
+function showCtx(x, y, items) {
+  const menu = $('ctxMenu');
+  menu.innerHTML = '';
+  
+  items.forEach(item => {
+    if (item === '---') {
+      menu.innerHTML += '<div class="ctx-sep"></div>';
+      return;
+    }
+    
+    const div = document.createElement('div');
+    div.className = 'ctx-item' + (item.disabled ? ' disabled' : '');
+    div.textContent = item.label;
+    
+    if (item.action) {
+      div.addEventListener('click', () => {
+        menu.style.display = 'none';
+        item.action();
+      });
+    }
+    
+    menu.appendChild(div);
+  });
+  
+  menu.style.display = 'block';
+  menu.style.left = Math.min(x, window.innerWidth - menu.offsetWidth - 4) + 'px';
+  menu.style.top = Math.min(y, window.innerHeight - menu.offsetHeight - 4) + 'px';
+}
+
+// 提示消息
+function toast(msg) {
+  showCtx(window.innerWidth / 2 - 60, 80, [{ label: msg, disabled: true }]);
+  setTimeout(() => { $('ctxMenu').style.display = 'none'; }, 2500);
+}
+
+// 时间格式化
+function timeStr(ts) {
+  const d = ts ? new Date(ts) : new Date();
+  return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+}
+
+// HTML转义
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+// 转发消息
+function relay(exclude, data) {
+  state.conns.forEach(conn => {
+    if (conn !== exclude && conn.open) {
+      conn.send(data);
+    }
+  });
+}
+</script>
+</body>
+</html>
